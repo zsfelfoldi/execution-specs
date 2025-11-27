@@ -227,7 +227,7 @@ def copy_trie(trie: Trie[K, V]) -> Trie[K, V]:
     return Trie(trie.secured, trie.default, copy.copy(trie._data))
 
 
-def trie_set(trie: Trie[K, V], key: K, value: V) -> None:
+def trie_set(trie: Trie[K, V], key, value: U256) -> None:
     """
     Stores an item in a Merkle Trie.
 
@@ -251,7 +251,7 @@ def trie_set(trie: Trie[K, V], key: K, value: V) -> None:
         trie._data[key] = value
 
 
-def trie_get(trie: Trie[K, V], key: K) -> V:
+def trie_get(trie: Trie[K, V], key: U256) -> U256:
     """
     Gets an item from the Merkle Trie.
 
