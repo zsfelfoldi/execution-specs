@@ -43,6 +43,13 @@ from .exceptions import (
     TransactionTypeContractCreationError,
 )
 from .fork_types import Account, Address, Authorization, VersionedHash
+from .log_index import (
+    LogIndexState,
+    log_index_add_block_delimiter,
+    log_index_add_logs,
+    log_index_add_tx_delimiter,
+    log_index_root,
+)
 from .requests import (
     CONSOLIDATION_REQUEST_TYPE,
     DEPOSIT_REQUEST_TYPE,
@@ -59,13 +66,6 @@ from .state import (
     modify_state,
     set_account_balance,
     state_root,
-)
-from .log_index import (
-    LogIndexState,
-    log_index_root,
-    log_index_add_transaction,
-    log_index_add_logs,
-    log_index_add_header,
 )
 from .transactions import (
     AccessListTransaction,
@@ -255,7 +255,7 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     withdrawals_root = root(block_output.withdrawals_trie)
     requests_hash = compute_requests_hash(block_output.requests)
 
-    log_index_add_header(block_env.log_index, block.header)
+    log_index_add_block_delimiter(block_env.log_index, block.header)
 
     if block_output.block_gas_used != block.header.gas_used:
         raise InvalidBlock(
@@ -998,8 +998,20 @@ def process_transaction(
     receipt = make_receipt(
         tx, tx_output.error, block_output.block_gas_used, tx_output.logs
     )
-    log_index_add_transaction(block_env.log_index, block_env.number, tx_env.tx_hash, keccak256(receipt), index)
-    log_index_add_logs(block_env.log_index, block_env.number, tx_env.tx_hash, index, tx_output.logs)
+    log_index_add_tx_delimiter(
+        block_env.log_index,
+        block_env.number,
+        tx_env.tx_hash,
+        keccak256(receipt),
+        index
+    )
+    log_index_add_logs(
+        block_env.log_index,
+        block_env.number,
+        tx_env.tx_hash,
+        index,
+        tx_output.logs
+    )
 
     receipt_key = rlp.encode(Uint(index))
     block_output.receipt_keys += (receipt_key,)

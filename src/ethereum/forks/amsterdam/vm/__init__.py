@@ -23,8 +23,8 @@ from ethereum.exceptions import EthereumException
 
 from ..blocks import Log, Receipt, Withdrawal
 from ..fork_types import Address, Authorization, VersionedHash
-from ..state import State, TransientStorage
 from ..log_index import LogIndexState
+from ..state import State, TransientStorage
 from ..transactions import LegacyTransaction
 from ..trie import Trie
 
