@@ -23,8 +23,10 @@ class BinaryTree:
     empty_node: Callable[[U256], U256]
     _data: Dict[U256, U256] = field(default_factory=dict)
 
+
 GTI_ROOT = U256(1)
 GTI_MAX_LEVEL = U256(1) << 255
+
 
 def btree_get(tree: BinaryTree, index: U256) -> U256:
     """
@@ -43,6 +45,7 @@ def btree_get(tree: BinaryTree, index: U256) -> U256:
         tree._data[index] = tree.binary_hash(left, right)
     return tree._data[index]
 
+
 def btree_set(tree: BinaryTree, index, value: U256) -> None:
     """
     Sets the leaf node value at the given generalized tree index and
@@ -55,6 +58,7 @@ def btree_set(tree: BinaryTree, index, value: U256) -> None:
     tree._data[index] = value
     _invalidate_ancestors(tree, index)
 
+
 def _invalidate_ancestors(tree: BinaryTree, index: U256) -> None:
     """
     Invalidates ancestors of the given node, moving down towards the root until
@@ -66,6 +70,7 @@ def _invalidate_ancestors(tree: BinaryTree, index: U256) -> None:
         if index not in tree._data:
             return
         del tree._data[index]
+
 
 def btree_expand(tree: BinaryTree, index: U256) -> None:
     """
@@ -91,6 +96,7 @@ def btree_expand(tree: BinaryTree, index: U256) -> None:
     tree._data[sibling] = tree.empty_node(sibling)
     _invalidate_ancestors(tree, index)
 
+
 def btree_collapse(tree: BinaryTree, index: U256) -> None:
     """
     Collapses the descendants of the given node into a single hash node.
@@ -105,6 +111,7 @@ def btree_collapse(tree: BinaryTree, index: U256) -> None:
         btree_collapse(tree, index * 2 + 1)
         del tree._data[index * 2 + 1]
 
+
 def gti_height(index: U256) -> Uint:
     """
     Returns the height of a generalized tree index. The height of the root node
@@ -117,11 +124,13 @@ def gti_height(index: U256) -> Uint:
         index >>= 1
     return height
 
+
 def gti_vector(root: U256, index, height: Uint) -> U256:
     """
     Returns the generalized tree index of a vector item.
     """
     return root << height + index
+
 
 def gti_merge(index, sub_index: U256) -> U256:
     """
@@ -130,6 +139,7 @@ def gti_merge(index, sub_index: U256) -> U256:
     """
     sub_height = gti_height(sub_index)
     return (index - 1) << sub_height + sub_index
+
 
 def gti_split_below(index: U256, level: Uint) -> U256:
     """
@@ -140,8 +150,9 @@ def gti_split_below(index: U256, level: Uint) -> U256:
     """
     height = gti_height(index)
     if height > level:
-        index >>= height-level
+        index >>= height - level
     return index
+
 
 def gti_split_above(index: U256, level: Uint) -> U256:
     """

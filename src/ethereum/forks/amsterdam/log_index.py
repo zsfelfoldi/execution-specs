@@ -72,6 +72,7 @@ GTI_ENTRY_META_FIELD_1 = U256(5)
 GTI_ENTRY_META_FIELD_2 = U256(6)
 GTI_ENTRY_META_FIELD_3 = U256(7)
 
+
 class LogIndexState:
     """
     Contains all information required to append the log index and calculate its
@@ -79,12 +80,13 @@ class LogIndexState:
     """
 
     tree: BinaryTree = field(
-        default_factory = lambda: BinaryTree(
-            binary_hash = _binary_hash,
-            empty_node = log_index_empty_node,
+        default_factory=lambda: BinaryTree(
+            binary_hash=_binary_hash,
+            empty_node=log_index_empty_node,
         )
     )
     next_entry: Uint
+
 
 def _binary_hash(left, right: U256) -> U256:
     """
@@ -93,16 +95,19 @@ def _binary_hash(left, right: U256) -> U256:
     node_hash = sha256(left.to_le_bytes32() + right.to_le_bytes32()).digest()
     return U256.from_le_bytes(node_hash)
 
+
 def log_index_root(log_index: LogIndexState) -> Root:
     """
     Returns the current root hash of the log index tree.
     """
     return Root(btree_get(log_index.tree, GTI_ROOT))
 
+
 def log_index_add_tx_delimiter(
     log_index: LogIndexState,
     block_number: Uint,
-    tx_hash, receipt_hash: Hash32,
+    tx_hash,
+    receipt_hash: Hash32,
     tx_index: Uint,
 ) -> None:
     """
@@ -113,13 +118,16 @@ def log_index_add_tx_delimiter(
     add_to_filter_maps(log_index, entry_hash_tx(tx_hash))
     add_entry_meta(
         log_index,
-        U256(block_number), U256(tx_hash), U256(tx_index), U256(receipt_hash)
+        U256(block_number),
+        U256(tx_hash),
+        U256(tx_index),
+        U256(receipt_hash),
     )
     advance_index(log_index, 1)
 
+
 def log_index_add_block_delimiter(
-    log_index: LogIndexState,
-    header: Header
+    log_index: LogIndexState, header: Header
 ) -> None:
     """
     Adds a block delimiter to the log index at the current next_entry position.
@@ -129,9 +137,13 @@ def log_index_add_block_delimiter(
     add_to_filter_maps(log_index, entry_hash_block(block_hash))
     add_entry_meta(
         log_index,
-        U256(header.number), U256(block_hash), header.timestamp, U256(0)
+        U256(header.number),
+        U256(block_hash),
+        header.timestamp,
+        U256(0),
     )
     advance_index(log_index, 1)
+
 
 def log_index_add_logs(
     log_index: LogIndexState,
@@ -146,17 +158,21 @@ def log_index_add_logs(
     """
     log_index = Uint(0)
     for log in logs:
-        prepare_index(log_index, Uint(len(log.topics)+1))
+        prepare_index(log_index, Uint(len(log.topics) + 1))
         add_to_filter_maps(log_index, entry_hash_address(log.address))
         add_log_entry(log_index, log)
         add_entry_meta(
             log_index,
-            U256(block_number), U256(tx_hash), U256(tx_index), U256(0)
+            U256(block_number),
+            U256(tx_hash),
+            U256(tx_index),
+            U256(0),
         )
         advance_index(log_index, 1)
         for topic in log.topics:
             add_to_filter_maps(log_index, entry_hash_topic(topic))
             advance_index(log_index, 1)
+
 
 def prepare_index(log_index: LogIndexState, count: Uint) -> None:
     """
@@ -175,10 +191,11 @@ def prepare_index(log_index: LogIndexState, count: Uint) -> None:
         map_remaining = VALUES_PER_MAP
     if map_remaining == VALUES_PER_MAP:  # initialize new map
         map_index = log_index.next_entry // VALUES_PER_MAP
-        for row_index in range(MAP_HEIGHT): # expand prog list of each row
+        for row_index in range(MAP_HEIGHT):  # expand prog list of each row
             prog_list_root = map_row_gti(map_index, row_index)
             expand_node = gti_merge(prog_list_root, GTI_LIST_COUNT)
             btree_expand(log_index.tree, expand_node)
+
 
 def advance_index(log_index: LogIndexState, count: Uint) -> None:
     """
@@ -198,6 +215,7 @@ def advance_index(log_index: LogIndexState, count: Uint) -> None:
         log_index.next_entry += 1
     btree_set(log_index.tree, GTI_NEXT_ENTRY, U256(log_index.next_entry))
 
+
 def index_entry_gti(entry_index: Uint) -> U256:
     """
     Returns the generalized tree index of the root of the given index entry.
@@ -209,8 +227,9 @@ def index_entry_gti(entry_index: Uint) -> U256:
     return gti_vector(
         index_entires_root,
         sub_index,
-        LOG2_MAPS_PER_EPOCH + LOG2_VALUES_PER_MAP
+        LOG2_MAPS_PER_EPOCH + LOG2_VALUES_PER_MAP,
     )
+
 
 def map_row_gti(map_index, row_index: Uint) -> U256:
     """
@@ -224,8 +243,9 @@ def map_row_gti(map_index, row_index: Uint) -> U256:
     return gti_vector(
         filter_maps_root,
         row_index * MAPS_PER_EPOCH + map_sub_index,
-        LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH
+        LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH,
     )
+
 
 def collapse_subtree(log_index: LogIndexState, gti: U256) -> None:
     """
@@ -247,6 +267,7 @@ def collapse_subtree(log_index: LogIndexState, gti: U256) -> None:
         gti //= 2
     btree_collapse(log_index.tree, gti)
 
+
 def collapse_map(log_index: LogIndexState, map_index: Uint) -> None:
     """
     Collapses each row of the given filter map.
@@ -261,32 +282,38 @@ def collapse_map(log_index: LogIndexState, map_index: Uint) -> None:
     for row_index in range(MAP_HEIGHT):
         collapse_subtree(log_index, map_row_gti(map_index, row_index))
 
+
 def fnv1a_64(data: Bytes) -> U64:
     """
     Returns the FNV1A64 hash of the input.
     """
-    fnv_prime = U64(0x100000001b3)
-    hash_val = U64(0xcbf29ce484222325)
+    fnv_prime = U64(0x100000001B3)
+    hash_val = U64(0xCBF29CE484222325)
     for byte in data:
         hash_val ^= byte
         hash_val = (hash_val * fnv_prime) & 0xFFFFFFFFFFFFFFFF
     return hash_val
+
 
 def get_row_index(map_index, layer_index: Uint, entry_hash: Hash32) -> Uint:
     """
     Returns the row index where the given entry hash is mapped on the given map
     and mapping layer.
     """
-    mapping_frequency = Uint(1) << LOG2_MAPPING_FREQUENCY[
-        min(layer_index, len(LOG2_MAPPING_FREQUENCY) - 1)
-    ]
+    mapping_frequency = (
+        Uint(1)
+        << LOG2_MAPPING_FREQUENCY[
+            min(layer_index, len(LOG2_MAPPING_FREQUENCY) - 1)
+        ]
+    )
     masked_map_index = map_index - (map_index % mapping_frequency)
     row_hash = sha256(
-        entry_hash +
-        masked_map_index.to_le_bytes4() +
-        layer_index.to_le_bytes4()
+        entry_hash
+        + masked_map_index.to_le_bytes4()
+        + layer_index.to_le_bytes4()
     ).digest()
     return Uint.from_le_bytes(row_hash[0:4]) % MAP_HEIGHT
+
 
 def get_column_index(entry_index: Uint, entry_hash: Hash32) -> Uint:
     """
@@ -296,9 +323,12 @@ def get_column_index(entry_index: Uint, entry_hash: Hash32) -> Uint:
     col_hash = fnv1a_64(entry_index.to_le_bytes8() + entry_hash)
     folded_hash = (col_hash >> 32) ^ (col_hash & 0xFFFFFFFF)
     hash_bits = LOG2_MAP_WIDTH - LOG2_VALUES_PER_MAP
-    return \
-        (entry_index % VALUES_PER_MAP) << hash_bits + \
-        folded_hash >> (32 - hash_bits)
+    return (
+        (entry_index % VALUES_PER_MAP)
+        << hash_bits + folded_hash
+        >> (32 - hash_bits)
+    )
+
 
 def add_to_filter_maps(log_index: LogIndexState, entry_hash: Hash32) -> None:
     """
@@ -326,6 +356,7 @@ def add_to_filter_maps(log_index: LogIndexState, entry_hash: Hash32) -> None:
             btree_set(log_index, count_node, U256(row_length))
             return
 
+
 def add_log_entry(log_index: LogIndexState, log: Log) -> None:
     """
     Adds the given log entry to the index entry at the current next_entry
@@ -344,14 +375,18 @@ def add_log_entry(log_index: LogIndexState, log: Log) -> None:
     data_root = gti_merge(log_entry_root, GTI_LOG_DATA)
     for i in range((len(log.data) + 31) // 32):
         chunk_node = prog_list_chunk_gti(data_root, i)
-        chunk_data = U256.from_le_bytes(log.data[i * 32:(i+1) * 32])
+        chunk_data = U256.from_le_bytes(log.data[i * 32 : (i + 1) * 32])
         btree_set(log_index, chunk_node, chunk_data)
     count_node = gti_merge(data_root, GTI_LIST_COUNT)
     btree_set(log_index, count_node, U256(len(log.data)))
 
+
 def add_entry_meta(
     log_index: LogIndexState,
-    field_0, field_1, field_2, field_3: U256,
+    field_0,
+    field_1,
+    field_2,
+    field_3: U256,
 ) -> None:
     """
     Adds the given entry meta to the index entry at the current next_entry
@@ -363,11 +398,13 @@ def add_entry_meta(
     btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_2), field_2)
     btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_3), field_3)
 
+
 def entry_hash_address(address: Address) -> Hash32:
     """
     Returns the filter mapping hash for log address entries.
     """
     return Hash32(sha256(address).digest())
+
 
 def entry_hash_topic(topic: Hash32) -> Hash32:
     """
@@ -375,17 +412,20 @@ def entry_hash_topic(topic: Hash32) -> Hash32:
     """
     return Hash32(sha256(topic).digest())
 
+
 def entry_hash_tx(tx_hash: Hash32) -> Hash32:
     """
     Returns the filter mapping hash for transaction delimiter entries.
     """
     return Hash32(sha256(tx_hash + b"\x01").digest())
 
+
 def entry_hash_block(block_hash: Hash32) -> Hash32:
     """
     Returns the filter mapping hash for block delimiter entries.
     """
     return Hash32(sha256(block_hash + b"\x02").digest())
+
 
 def prog_list_chunk_gti(list_root: U256, chunk_index: Uint) -> U256:
     """
@@ -401,6 +441,7 @@ def prog_list_chunk_gti(list_root: U256, chunk_index: Uint) -> U256:
     subtree_root = gti_merge(gti, GTI_PROG_LIST_SUBTREE)
     return gti_vector(subtree_root, chunk_index, height)
 
+
 def _make_empty_vector_nodes(length: Uint) -> List[U256]:
     """
     Calculates the tree node values of an empty vector. Item 0 is zero (empty
@@ -414,8 +455,10 @@ def _make_empty_vector_nodes(length: Uint) -> List[U256]:
         next_root = _binary_hash(next_root, next_root)
     return roots
 
+
 EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
 EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
+
 
 def log_index_empty_node(index: U256) -> U256:
     """
@@ -452,6 +495,7 @@ def log_index_empty_node(index: U256) -> U256:
         return U256(0)
     raise AssertionError("Invalid log index tree node")
 
+
 def epoch_tree_empty_node(index: U256) -> U256:
     """
     Returns the default empty node value of a single epoch tree at the given
@@ -478,6 +522,7 @@ def epoch_tree_empty_node(index: U256) -> U256:
         return index_entry_empty_node(index)
     raise AssertionError("Invalid log index tree node")
 
+
 def prog_list_empty_node(index: U256) -> U256:
     """
     Returns the default empty node value of a progressive list at the given
@@ -500,6 +545,7 @@ def prog_list_empty_node(index: U256) -> U256:
         return U256(0)
     raise AssertionError("Invalid log index tree node")
 
+
 def prog_list_tree_empty_node(level: Uint, index: U256) -> U256:
     """
     Returns the default empty node value of a single tree level of a
@@ -520,6 +566,7 @@ def prog_list_tree_empty_node(level: Uint, index: U256) -> U256:
         return prog_list_tree_empty_node(level + 1, index)
     raise AssertionError("Invalid log index tree node")
 
+
 def index_entry_empty_node(index: U256) -> U256:
     """
     Returns the default empty node value of a single index entry at the given
@@ -536,11 +583,12 @@ def index_entry_empty_node(index: U256) -> U256:
         if height == 0:
             return U256(0)
         return log_entry_empty_node(index)
-    if side == GTI_ENTRY_META: # meta fields (log/block/tx, always 4 fields)
+    if side == GTI_ENTRY_META:  # meta fields (log/block/tx, always 4 fields)
         if height > 2:
             raise AssertionError("Invalid log index tree node")
         return EMPTY_VECTOR_NODES[2 - height]
     raise AssertionError("Invalid log index tree node")
+
 
 def log_entry_empty_node(index: U256) -> U256:
     """
@@ -563,6 +611,7 @@ def log_entry_empty_node(index: U256) -> U256:
     if field == GTI_LOG_DATA:
         return prog_list_empty_node(sub_index)
     raise AssertionError("Invalid log index tree node")
+
 
 def log_topics_list_empty_node(index: U256) -> U256:
     """

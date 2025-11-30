@@ -1003,14 +1003,14 @@ def process_transaction(
         block_env.number,
         tx_env.tx_hash,
         keccak256(receipt),
-        index
+        index,
     )
     log_index_add_logs(
         block_env.log_index,
         block_env.number,
         tx_env.tx_hash,
         index,
-        tx_output.logs
+        tx_output.logs,
     )
 
     receipt_key = rlp.encode(Uint(index))
