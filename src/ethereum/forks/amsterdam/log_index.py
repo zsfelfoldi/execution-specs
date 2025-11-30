@@ -17,9 +17,19 @@ from ethereum_types.numeric import U64, U256, Uint
 from ethereum.crypto.hash import Hash32, keccak256
 
 from .base_types import Address, Bytes
-from .binary_tree import (GTI_ROOT, BinaryTree, btree_collapse, btree_expand,
-                          btree_get, btree_set, gti_height, gti_merge,
-                          gti_split_above, gti_split_below, gti_vector)
+from .binary_tree import (
+    GTI_ROOT,
+    BinaryTree,
+    btree_collapse,
+    btree_expand,
+    btree_get,
+    btree_set,
+    gti_height,
+    gti_merge,
+    gti_split_above,
+    gti_split_below,
+    gti_vector,
+)
 from .blocks import Header, Log
 from .fork_types import Root
 
