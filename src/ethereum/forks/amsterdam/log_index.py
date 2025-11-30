@@ -12,13 +12,14 @@ from hashlib import sha256
 from typing import List, Tuple
 
 from ethereum_rlp import rlp
-from ethereum_types.numeric import U256, Uint
+from ethereum_types.numeric import U64, U256, Uint
 
 from ethereum.crypto.hash import Hash32, keccak256
 
+from .base_types import Address, Bytes
 from .binary_tree import (GTI_ROOT, BinaryTree, btree_collapse, btree_expand,
-                          btree_get, btree_set, gti_height, gti_split_above,
-                          gti_split_below)
+                          btree_get, btree_set, gti_height, gti_merge,
+                          gti_split_above, gti_split_below, gti_vector)
 from .blocks import Header, Log
 from .fork_types import Root
 
@@ -183,7 +184,7 @@ def advance_index(log_index: LogIndexState, count: Uint) -> None:
     if log_index.next_entry % VALUES_PER_MAP == 0:
         collapse_map(log_index.next_entry // VALUES_PER_MAP - 1)
     for _ in range(count):
-        collapse_incremental_subtree(log_index, index_entry_gti(log_index.next_entry))
+        collapse_subtree(log_index, index_entry_gti(log_index.next_entry))
         log_index.next_entry += 1
     btree_set(log_index.tree, GTI_NEXT_ENTRY, U256(log_index.next_entry))
 
@@ -216,7 +217,7 @@ def map_row_gti(map_index, row_index: Uint) -> U256:
         LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH
     )
 
-def collapse_incremental_subtree(log_index: LogIndexState, gti: U256) -> None:
+def collapse_subtree(log_index: LogIndexState, gti: U256) -> None:
     """
     Collapses the biggest subtree of the entire log index tree that has the
     given generalized tree index on its path of rightmost descendants.
@@ -225,7 +226,7 @@ def collapse_incremental_subtree(log_index: LogIndexState, gti: U256) -> None:
     node of the entire log index tree, the rightmost descendant of the left
     child is collapsed before the rightmost descendant of the right child so
     that the parent is collapsed after the subtree is completed.
-    
+
     A practical implementation that actually needs the generated tree structure
     should save the collapsed subtrees to a persistent database.
     Also a practical implementation might only collapse the parts of the index
@@ -239,8 +240,8 @@ def collapse_incremental_subtree(log_index: LogIndexState, gti: U256) -> None:
 def collapse_map(log_index: LogIndexState, map_index: Uint) -> None:
     """
     Collapses each row of the given filter map.
-    
-    Note that the incremental collapse logic (see collapse_incremental_subtree)
+
+    Note that the incremental collapse logic (see collapse_subtree)
     is applied here too and maps should also be collapsed in a strictly
     increasing order. This also ensures that collapsing each map of an epoch
     finally collapses the entire filter maps subtree. It also assumes that the
@@ -248,7 +249,7 @@ def collapse_map(log_index: LogIndexState, map_index: Uint) -> None:
     collapsing the entire epoch tree.
     """
     for row_index in range(MAP_HEIGHT):
-        collapse_incremental_subtree(log_index, map_row_gti(map_index, row_index))
+        collapse_subtree(log_index, map_row_gti(map_index, row_index))
 
 def fnv1a_64(data: Bytes) -> U64:
     """
@@ -275,7 +276,7 @@ def get_row_index(map_index, layer_index: Uint, entry_hash: Hash32) -> Uint:
         masked_map_index.to_le_bytes4() +
         layer_index.to_le_bytes4()
     ).digest()
-    return from_le_bytes(row_hash[0:4]) % MAP_HEIGHT
+    return Uint.from_le_bytes(row_hash[0:4]) % MAP_HEIGHT
 
 def get_column_index(entry_index: Uint, entry_hash: Hash32) -> Uint:
     """
@@ -296,10 +297,10 @@ def add_to_filter_maps(log_index: LogIndexState, entry_hash: Hash32) -> None:
     """
     map_index = log_index.next_entry // VALUES_PER_MAP
     layer_index = Uint(0)
-    while true:
+    while True:
         row_index = get_row_index(map_index, layer_index, entry_hash)
         map_row_root = map_row_gti(map_index, row_index)
-        count_node = gti_merge(row_root, GTI_LIST_COUNT)
+        count_node = gti_merge(map_row_root, GTI_LIST_COUNT)
         row_length = Uint(btree_get(log_index, count_node))
         max_length = MAX_ROW_LENGTH[min(layer_index, len(MAX_ROW_LENGTH) - 1)]
         if row_length < max_length:
@@ -346,11 +347,11 @@ def add_entry_meta(
     Adds the given entry meta to the index entry at the current next_entry
     position.
     """
-    meta_root = gti_merge(index_entry_gti(log_index.next_entry), GTI_ENTRY_META)
-    btree_set(gti_merge(meta_root, GTI_ENTRY_META_FIELD_0), field_0)
-    btree_set(gti_merge(meta_root, GTI_ENTRY_META_FIELD_1), field_1)
-    btree_set(gti_merge(meta_root, GTI_ENTRY_META_FIELD_2), field_2)
-    btree_set(gti_merge(meta_root, GTI_ENTRY_META_FIELD_3), field_3)
+    root = gti_merge(index_entry_gti(log_index.next_entry), GTI_ENTRY_META)
+    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_0), field_0)
+    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_1), field_1)
+    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_2), field_2)
+    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_3), field_3)
 
 def entry_hash_address(address: Address) -> Hash32:
     """
