@@ -7,6 +7,7 @@ Log Index.
 
 """
 
+from dataclasses import field
 from hashlib import sha256
 from typing import List, Tuple
 
@@ -15,8 +16,8 @@ from ethereum_types.numeric import U256, Uint
 
 from ethereum.crypto.hash import Hash32, keccak256
 
-from .binary_tree import (BinaryTree, btree_collapse, btree_expand, btree_get,
-                          btree_set, gti_height, gti_split_above,
+from .binary_tree import (GTI_ROOT, BinaryTree, btree_collapse, btree_expand,
+                          btree_get, btree_set, gti_height, gti_split_above,
                           gti_split_below)
 from .blocks import Header, Log
 from .fork_types import Root
@@ -78,8 +79,8 @@ def _binary_hash(left, right: U256) -> U256:
     """
     Returns the SHA2 binary tree hash of two given descendants.
     """
-    hash = sha256(left.to_le_bytes32() + right.to_le_bytes32()).digest()
-    return U256.from_le_bytes(hash)
+    node_hash = sha256(left.to_le_bytes32() + right.to_le_bytes32()).digest()
+    return U256.from_le_bytes(node_hash)
 
 def log_index_root(log_index: LogIndexState) -> Root:
     """
@@ -105,7 +106,10 @@ def log_index_add_tx_delimiter(
     )
     advance_index(log_index, 1)
 
-def log_index_add_block_delimiter(log_index: LogIndexState, header: Header) -> None:
+def log_index_add_block_delimiter(
+    log_index: LogIndexState,
+    header: Header
+) -> None:
     """
     Adds a block delimiter to the log index at the current next_entry position.
     """
@@ -126,7 +130,7 @@ def log_index_add_logs(
     logs: Tuple[Log, ...],
 ) -> None:
     """
-    Adds address and topic entries to the current filter map and a log enrty to
+    Adds address and topic entries to the current filter map and a log entry to
     the index entries tree according to the given list of log events.
     """
     log_index = Uint(0)
@@ -148,7 +152,7 @@ def prepare_index(log_index: LogIndexState, count: Uint) -> None:
     Prepares the log index before adding the given number of entries by
     expanding the rows of the next filter map if the previous one has been
     filled.
-    
+
     Note that a batch of entries belonging to a single log cannot be split
     between two maps so the function also pads the end of the current map with
     empty entries and starts a new one if the old one does not have enough

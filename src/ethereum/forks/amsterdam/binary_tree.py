@@ -94,7 +94,7 @@ def btree_expand(tree: BinaryTree, index: U256) -> None:
 def btree_collapse(tree: BinaryTree, index: U256) -> None:
     """
     Collapses the descendants of the given node into a single hash node.
-    
+
     Note that a collapsed subtree should not be expanded again.
     """
     btree_get(tree, index)
