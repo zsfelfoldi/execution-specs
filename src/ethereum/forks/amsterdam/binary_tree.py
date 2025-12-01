@@ -90,7 +90,7 @@ def btree_expand(tree: BinaryTree, index: U256) -> None:
             raise AssertionError("Trying to expand non-empty subtree")
         return
     tree._data[index] = tree.empty_node(index)
-    if index == BTREE_ROOT:
+    if index == GTI_ROOT:
         return
     parent = index // 2
     sibling = parent * 4 + 1 - index

@@ -47,9 +47,6 @@ MAPS_PER_EPOCH = Uint(1) << LOG2_MAPS_PER_EPOCH
 VALUES_PER_MAP = Uint(1) << LOG2_VALUES_PER_MAP
 MAP_HEIGHT = Uint(1) << LOG2_MAP_HEIGHT
 
-EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
-EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
-
 # absolute generalized tree indices
 GTI_EPOCH_HISTORY = U256(2)
 GTI_NEXT_ENTRY = U256(3)
@@ -275,7 +272,10 @@ def map_value_hash_block(block_hash: Hash32) -> Hash32:
     return Hash32(sha256(block_hash + b"\x02").digest())
 
 
-def add_to_filter_maps(log_index: LogIndexState, map_value_hash: Hash32) -> None:
+def add_to_filter_maps(
+    log_index: LogIndexState,
+    map_value_hash: Hash32
+) -> None:
     """
     Adds the given entry hash to the current filter map at the current
     next_entry position.
@@ -289,13 +289,13 @@ def add_to_filter_maps(log_index: LogIndexState, map_value_hash: Hash32) -> None
         row_length = Uint(btree_get(log_index.tree, count_node))
         max_length = MAX_ROW_LENGTH[min(layer_index, len(MAX_ROW_LENGTH) - 1)]
         if row_length < max_length:
-            column_index = get_column_index(log_index.next_entry, map_value_hash)
+            column = get_column_index(log_index.next_entry, map_value_hash)
             chunk_node = prog_list_chunk_gti(map_row_root, row_length // 8)
             chunk = U256(0)
             chunk_subindex = row_length % 8
             if chunk_subindex > 0:
                 chunk = btree_get(log_index.tree, chunk_node)
-            chunk += U256(column_index) << (32 * chunk_subindex)
+            chunk += U256(column) << (32 * chunk_subindex)
             btree_set(log_index.tree, chunk_node, chunk)
             row_length += 1
             btree_set(log_index.tree, count_node, U256(row_length))
@@ -316,7 +316,11 @@ def add_log_entry(log_index: LogIndexState, log: Log) -> None:
     for i in range(len(log.topics)):
         topic_node = gti_vector(list_tree_root, i, 2)
         btree_set(log_index.tree, topic_node, U256(log.topics[i]))
-    btree_set(log_index.tree, gti_merge(topics_root, GTI_LIST_COUNT), U256(len(log.topics)))
+    btree_set(
+        log_index.tree,
+        gti_merge(topics_root, GTI_LIST_COUNT),
+        U256(len(log.topics)),
+    )
     data_root = gti_merge(log_entry_root, GTI_LOG_DATA)
     for i in range((len(log.data) + 31) // 32):
         chunk_node = prog_list_chunk_gti(data_root, i)
@@ -344,7 +348,9 @@ def add_entry_meta(
     btree_set(log_index.tree, gti_merge(root, GTI_ENTRY_META_FIELD_3), field_3)
 
 
-def get_row_index(map_index, layer_index: Uint, map_value_hash: Hash32) -> Uint:
+def get_row_index(
+    map_index, layer_index: Uint, map_value_hash: Hash32
+) -> Uint:
     """
     Returns the row index where the given map value hash is mapped on the given
     map and mapping layer.
@@ -454,6 +460,9 @@ def _make_empty_vector_nodes(length: Uint) -> List[U256]:
         next_root = _binary_hash(next_root, next_root)
     return roots
 
+
+EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
+EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
 
 def log_index_empty_node(index: U256) -> U256:
     """
