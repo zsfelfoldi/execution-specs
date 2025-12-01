@@ -251,7 +251,6 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     block_log_index_root = log_index_root(block_env.log_index)
     transactions_root = root(block_output.transactions_trie)
     receipt_root = root(block_output.receipts_trie)
-    block_logs_bloom = logs_bloom(block_output.block_logs)
     withdrawals_root = root(block_output.withdrawals_trie)
     requests_hash = compute_requests_hash(block_output.requests)
 
@@ -265,11 +264,9 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         raise InvalidBlock
     if block_state_root != block.header.state_root:
         raise InvalidBlock
-    if block_log_index_root != block.header.log_index_root:
-        raise InvalidBlock
     if receipt_root != block.header.receipt_root:
         raise InvalidBlock
-    if block_logs_bloom != block.header.bloom:
+    if block_log_index_root != block.header.log_index_root:
         raise InvalidBlock
     if withdrawals_root != block.header.withdrawals_root:
         raise InvalidBlock
