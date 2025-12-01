@@ -273,8 +273,7 @@ def map_value_hash_block(block_hash: Hash32) -> Hash32:
 
 
 def add_to_filter_maps(
-    log_index: LogIndexState,
-    map_value_hash: Hash32
+    log_index: LogIndexState, map_value_hash: Hash32
 ) -> None:
     """
     Adds the given entry hash to the current filter map at the current
@@ -461,8 +460,11 @@ def _make_empty_vector_nodes(length: Uint) -> List[U256]:
     return roots
 
 
-EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
-EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
+_empty_vector_nodes = _make_empty_vector_nodes(256)
+_empty_log_index_root = _binary_hash(
+    _empty_vector_nodes[LOG2_EPOCH_HISTORY], U256(0)
+)
+
 
 def log_index_empty_node(index: U256) -> U256:
     """
@@ -484,13 +486,13 @@ def log_index_empty_node(index: U256) -> U256:
     - log.topics and log.data lists
     """
     if index == GTI_ROOT:
-        return EMPTY_LOG_INDEX_ROOT
+        return _empty_log_index_root
     side = gti_split_below(index, 1)
     index = gti_split_above(index, 1)
     height = gti_height(index)
     if side == GTI_EPOCH_HISTORY:
         if height <= LOG2_EPOCH_HISTORY:
-            return EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY - height]
+            return _empty_vector_nodes[LOG2_EPOCH_HISTORY - height]
         index = gti_split_above(index, LOG2_EPOCH_HISTORY)
         return epoch_tree_empty_node(index)
     if side == GTI_NEXT_ENTRY:
@@ -515,13 +517,13 @@ def epoch_tree_empty_node(index: U256) -> U256:
     if side == GTI_FILTER_MAPS:
         tree_height = LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH
         if height <= tree_height:
-            return EMPTY_VECTOR_NODES[tree_height - height]
+            return _empty_vector_nodes[tree_height - height]
         index = gti_split_above(index, tree_height)
         return prog_list_empty_node(index)
     if side == GTI_INDEX_ENTRIES:
         tree_height = LOG2_MAPS_PER_EPOCH + LOG2_VALUES_PER_MAP
         if height <= tree_height:
-            return EMPTY_VECTOR_NODES[tree_height - height]
+            return _empty_vector_nodes[tree_height - height]
         index = gti_split_above(index, tree_height)
         return index_entry_empty_node(index)
     raise AssertionError("Invalid log index tree node")
@@ -562,7 +564,7 @@ def prog_list_tree_empty_node(level: Uint, index: U256) -> U256:
     if side == GTI_PROG_LIST_SUBTREE:
         max_height = PROG_LIST_HEIGHT_FIRST + PROG_LIST_HEIGHT_STEP * level
         if height <= max_height:
-            return EMPTY_VECTOR_NODES[max_height - height]
+            return _empty_vector_nodes[max_height - height]
         raise AssertionError("Invalid log index tree node")
     if side == GTI_PROG_LIST_NEXT_TREE:
         if height == 0:
@@ -590,7 +592,7 @@ def index_entry_empty_node(index: U256) -> U256:
     if side == GTI_ENTRY_META:  # meta fields (log/block/tx, always 4 fields)
         if height > 2:
             raise AssertionError("Invalid log index tree node")
-        return EMPTY_VECTOR_NODES[2 - height]
+        return _empty_vector_nodes[2 - height]
     raise AssertionError("Invalid log index tree node")
 
 
@@ -605,7 +607,7 @@ def log_entry_empty_node(index: U256) -> U256:
     """
     height = gti_height(index)
     if height <= 2:
-        return EMPTY_VECTOR_NODES[2 - height]
+        return _empty_vector_nodes[2 - height]
     field = gti_split_below(index, 2)
     sub_index = gti_split_above(index, 2)
     if field == GTI_LOG_ADDRESS:
@@ -632,7 +634,7 @@ def log_topics_list_empty_node(index: U256) -> U256:
     if side == GTI_LIST_TREE:
         if height > 2:
             raise AssertionError("Invalid log index tree node")
-        return EMPTY_VECTOR_NODES[2 - height]
+        return _empty_vector_nodes[2 - height]
     if side == GTI_LIST_COUNT:
         if height == 0:
             return U256(0)
