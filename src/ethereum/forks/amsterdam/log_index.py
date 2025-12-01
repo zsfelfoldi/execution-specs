@@ -47,6 +47,9 @@ MAPS_PER_EPOCH = Uint(1) << LOG2_MAPS_PER_EPOCH
 VALUES_PER_MAP = Uint(1) << LOG2_VALUES_PER_MAP
 MAP_HEIGHT = Uint(1) << LOG2_MAP_HEIGHT
 
+EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
+EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
+
 # absolute generalized tree indices
 GTI_EPOCH_HISTORY = U256(2)
 GTI_NEXT_ENTRY = U256(3)
@@ -88,14 +91,6 @@ class LogIndexState:
     next_entry: Uint
 
 
-def _binary_hash(left, right: U256) -> U256:
-    """
-    Returns the SHA2 binary tree hash of two given descendants.
-    """
-    node_hash = sha256(left.to_le_bytes32() + right.to_le_bytes32()).digest()
-    return U256.from_le_bytes(node_hash)
-
-
 def log_index_root(log_index: LogIndexState) -> Root:
     """
     Returns the current root hash of the log index tree.
@@ -103,7 +98,7 @@ def log_index_root(log_index: LogIndexState) -> Root:
     return Root(btree_get(log_index.tree, GTI_ROOT))
 
 
-def log_index_add_tx_delimiter(
+def log_index_add_tx_entry(
     log_index: LogIndexState,
     block_number: Uint,
     tx_hash,
@@ -115,7 +110,7 @@ def log_index_add_tx_delimiter(
     position.
     """
     prepare_index(log_index, 1)
-    add_to_filter_maps(log_index, entry_hash_tx(tx_hash))
+    add_to_filter_maps(log_index, map_value_hash_tx(tx_hash))
     add_entry_meta(
         log_index,
         U256(block_number),
@@ -126,7 +121,7 @@ def log_index_add_tx_delimiter(
     advance_index(log_index, 1)
 
 
-def log_index_add_block_delimiter(
+def log_index_add_block_entry(
     log_index: LogIndexState, header: Header
 ) -> None:
     """
@@ -134,7 +129,7 @@ def log_index_add_block_delimiter(
     """
     prepare_index(log_index, 1)
     block_hash = keccak256(rlp.encode(header))
-    add_to_filter_maps(log_index, entry_hash_block(block_hash))
+    add_to_filter_maps(log_index, map_value_hash_block(block_hash))
     add_entry_meta(
         log_index,
         U256(header.number),
@@ -145,7 +140,7 @@ def log_index_add_block_delimiter(
     advance_index(log_index, 1)
 
 
-def log_index_add_logs(
+def log_index_add_log_entries(
     log_index: LogIndexState,
     block_number: Uint,
     tx_hash: Hash32,
@@ -159,7 +154,7 @@ def log_index_add_logs(
     log_index = Uint(0)
     for log in logs:
         prepare_index(log_index, Uint(len(log.topics) + 1))
-        add_to_filter_maps(log_index, entry_hash_address(log.address))
+        add_to_filter_maps(log_index, map_value_hash_address(log.address))
         add_log_entry(log_index, log)
         add_entry_meta(
             log_index,
@@ -170,7 +165,7 @@ def log_index_add_logs(
         )
         advance_index(log_index, 1)
         for topic in log.topics:
-            add_to_filter_maps(log_index, entry_hash_topic(topic))
+            add_to_filter_maps(log_index, map_value_hash_topic(topic))
             advance_index(log_index, 1)
 
 
@@ -216,37 +211,6 @@ def advance_index(log_index: LogIndexState, count: Uint) -> None:
     btree_set(log_index.tree, GTI_NEXT_ENTRY, U256(log_index.next_entry))
 
 
-def index_entry_gti(entry_index: Uint) -> U256:
-    """
-    Returns the generalized tree index of the root of the given index entry.
-    """
-    epoch_index = entry_index // (MAPS_PER_EPOCH * VALUES_PER_MAP)
-    sub_index = entry_index % (MAPS_PER_EPOCH * VALUES_PER_MAP)
-    epoch_root = gti_vector(GTI_EPOCH_HISTORY, epoch_index, LOG2_EPOCH_HISTORY)
-    index_entires_root = gti_merge(epoch_root, GTI_INDEX_ENTRIES)
-    return gti_vector(
-        index_entires_root,
-        sub_index,
-        LOG2_MAPS_PER_EPOCH + LOG2_VALUES_PER_MAP,
-    )
-
-
-def map_row_gti(map_index, row_index: Uint) -> U256:
-    """
-    Returns the generalized tree index of the root of the progressive list
-    representing the given filter map row.
-    """
-    epoch_index = map_index // MAPS_PER_EPOCH
-    map_sub_index = map_index % MAPS_PER_EPOCH
-    epoch_root = gti_vector(GTI_EPOCH_HISTORY, epoch_index, LOG2_EPOCH_HISTORY)
-    filter_maps_root = gti_merge(epoch_root, GTI_FILTER_MAPS)
-    return gti_vector(
-        filter_maps_root,
-        row_index * MAPS_PER_EPOCH + map_sub_index,
-        LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH,
-    )
-
-
 def collapse_subtree(log_index: LogIndexState, gti: U256) -> None:
     """
     Collapses the biggest subtree of the entire log index tree that has the
@@ -283,54 +247,35 @@ def collapse_map(log_index: LogIndexState, map_index: Uint) -> None:
         collapse_subtree(log_index, map_row_gti(map_index, row_index))
 
 
-def fnv1a_64(data: Bytes) -> U64:
+def map_value_hash_address(address: Address) -> Hash32:
     """
-    Returns the FNV1A64 hash of the input.
+    Returns the filter mapping hash for log address entries.
     """
-    fnv_prime = U64(0x100000001B3)
-    hash_val = U64(0xCBF29CE484222325)
-    for byte in data:
-        hash_val ^= byte
-        hash_val = (hash_val * fnv_prime) & 0xFFFFFFFFFFFFFFFF
-    return hash_val
+    return Hash32(sha256(address).digest())
 
 
-def get_row_index(map_index, layer_index: Uint, entry_hash: Hash32) -> Uint:
+def map_value_hash_topic(topic: Hash32) -> Hash32:
     """
-    Returns the row index where the given entry hash is mapped on the given map
-    and mapping layer.
+    Returns the filter mapping hash for log topic entries.
     """
-    mapping_frequency = (
-        Uint(1)
-        << LOG2_MAPPING_FREQUENCY[
-            min(layer_index, len(LOG2_MAPPING_FREQUENCY) - 1)
-        ]
-    )
-    masked_map_index = map_index - (map_index % mapping_frequency)
-    row_hash = sha256(
-        entry_hash
-        + masked_map_index.to_le_bytes4()
-        + layer_index.to_le_bytes4()
-    ).digest()
-    return Uint.from_le_bytes(row_hash[0:4]) % MAP_HEIGHT
+    return Hash32(sha256(topic).digest())
 
 
-def get_column_index(entry_index: Uint, entry_hash: Hash32) -> Uint:
+def map_value_hash_tx(tx_hash: Hash32) -> Hash32:
     """
-    Returns the column index where the given entry hash is mapped at the given
-    entry index.
+    Returns the filter mapping hash for transaction delimiter entries.
     """
-    col_hash = fnv1a_64(entry_index.to_le_bytes8() + entry_hash)
-    folded_hash = (col_hash >> 32) ^ (col_hash & 0xFFFFFFFF)
-    hash_bits = LOG2_MAP_WIDTH - LOG2_VALUES_PER_MAP
-    return (
-        (entry_index % VALUES_PER_MAP)
-        << hash_bits + folded_hash
-        >> (32 - hash_bits)
-    )
+    return Hash32(sha256(tx_hash + b"\x01").digest())
 
 
-def add_to_filter_maps(log_index: LogIndexState, entry_hash: Hash32) -> None:
+def map_value_hash_block(block_hash: Hash32) -> Hash32:
+    """
+    Returns the filter mapping hash for block delimiter entries.
+    """
+    return Hash32(sha256(block_hash + b"\x02").digest())
+
+
+def add_to_filter_maps(log_index: LogIndexState, map_value_hash: Hash32) -> None:
     """
     Adds the given entry hash to the current filter map at the current
     next_entry position.
@@ -338,22 +283,22 @@ def add_to_filter_maps(log_index: LogIndexState, entry_hash: Hash32) -> None:
     map_index = log_index.next_entry // VALUES_PER_MAP
     layer_index = Uint(0)
     while True:
-        row_index = get_row_index(map_index, layer_index, entry_hash)
+        row_index = get_row_index(map_index, layer_index, map_value_hash)
         map_row_root = map_row_gti(map_index, row_index)
         count_node = gti_merge(map_row_root, GTI_LIST_COUNT)
-        row_length = Uint(btree_get(log_index, count_node))
+        row_length = Uint(btree_get(log_index.tree, count_node))
         max_length = MAX_ROW_LENGTH[min(layer_index, len(MAX_ROW_LENGTH) - 1)]
         if row_length < max_length:
-            column_index = get_column_index(log_index.next_entry, entry_hash)
+            column_index = get_column_index(log_index.next_entry, map_value_hash)
             chunk_node = prog_list_chunk_gti(map_row_root, row_length // 8)
             chunk = U256(0)
             chunk_subindex = row_length % 8
             if chunk_subindex > 0:
-                chunk = btree_get(log_index, chunk_node)
+                chunk = btree_get(log_index.tree, chunk_node)
             chunk += U256(column_index) << (32 * chunk_subindex)
-            btree_set(log_index, chunk_node, chunk)
+            btree_set(log_index.tree, chunk_node, chunk)
             row_length += 1
-            btree_set(log_index, count_node, U256(row_length))
+            btree_set(log_index.tree, count_node, U256(row_length))
             return
 
 
@@ -365,20 +310,20 @@ def add_log_entry(log_index: LogIndexState, log: Log) -> None:
     index_entry_root = index_entry_gti(log_index.next_entry)
     log_entry_root = gti_merge(index_entry_root, GTI_LOG_ENTRY)
     address_node = gti_merge(log_entry_root, GTI_LOG_ADDRESS)
-    btree_set(address_node, U256(log.address))
+    btree_set(log_index.tree, address_node, U256(log.address))
     topics_root = gti_merge(log_entry_root, GTI_LOG_TOPICS)
     list_tree_root = gti_merge(topics_root, GTI_LIST_TREE)
     for i in range(len(log.topics)):
         topic_node = gti_vector(list_tree_root, i, 2)
-        btree_set(topic_node, U256(log.topics[i]))
-    btree_set(gti_merge(topics_root, GTI_LIST_COUNT), U256(len(log.topics)))
+        btree_set(log_index.tree, topic_node, U256(log.topics[i]))
+    btree_set(log_index.tree, gti_merge(topics_root, GTI_LIST_COUNT), U256(len(log.topics)))
     data_root = gti_merge(log_entry_root, GTI_LOG_DATA)
     for i in range((len(log.data) + 31) // 32):
         chunk_node = prog_list_chunk_gti(data_root, i)
         chunk_data = U256.from_le_bytes(log.data[i * 32 : (i + 1) * 32])
-        btree_set(log_index, chunk_node, chunk_data)
+        btree_set(log_index.tree, chunk_node, chunk_data)
     count_node = gti_merge(data_root, GTI_LIST_COUNT)
-    btree_set(log_index, count_node, U256(len(log.data)))
+    btree_set(log_index.tree, log_index, count_node, U256(len(log.data)))
 
 
 def add_entry_meta(
@@ -393,38 +338,92 @@ def add_entry_meta(
     position.
     """
     root = gti_merge(index_entry_gti(log_index.next_entry), GTI_ENTRY_META)
-    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_0), field_0)
-    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_1), field_1)
-    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_2), field_2)
-    btree_set(gti_merge(root, GTI_ENTRY_META_FIELD_3), field_3)
+    btree_set(log_index.tree, gti_merge(root, GTI_ENTRY_META_FIELD_0), field_0)
+    btree_set(log_index.tree, gti_merge(root, GTI_ENTRY_META_FIELD_1), field_1)
+    btree_set(log_index.tree, gti_merge(root, GTI_ENTRY_META_FIELD_2), field_2)
+    btree_set(log_index.tree, gti_merge(root, GTI_ENTRY_META_FIELD_3), field_3)
 
 
-def entry_hash_address(address: Address) -> Hash32:
+def get_row_index(map_index, layer_index: Uint, map_value_hash: Hash32) -> Uint:
     """
-    Returns the filter mapping hash for log address entries.
+    Returns the row index where the given map value hash is mapped on the given
+    map and mapping layer.
     """
-    return Hash32(sha256(address).digest())
+    mf_index = min(layer_index, len(LOG2_MAPPING_FREQUENCY) - 1)
+    mapping_frequency = Uint(1) << LOG2_MAPPING_FREQUENCY[mf_index]
+    masked_map_index = map_index - (map_index % mapping_frequency)
+    row_hash = sha256(
+        map_value_hash
+        + masked_map_index.to_le_bytes4()
+        + layer_index.to_le_bytes4()
+    ).digest()
+    return Uint.from_le_bytes(row_hash[0:4]) % MAP_HEIGHT
 
 
-def entry_hash_topic(topic: Hash32) -> Hash32:
+def get_column_index(map_value_index: Uint, map_value_hash: Hash32) -> Uint:
     """
-    Returns the filter mapping hash for log topic entries.
+    Returns the column index where the given entry hash is mapped at the given
+    entry index.
     """
-    return Hash32(sha256(topic).digest())
+    col_hash = _fnv1a_64(map_value_index.to_le_bytes8() + map_value_hash)
+    folded_hash = (col_hash >> 32) ^ (col_hash & 0xFFFFFFFF)
+    hash_bits = LOG2_MAP_WIDTH - LOG2_VALUES_PER_MAP
+    return (
+        (map_value_index % VALUES_PER_MAP)
+        << hash_bits + folded_hash
+        >> (32 - hash_bits)
+    )
 
 
-def entry_hash_tx(tx_hash: Hash32) -> Hash32:
+def _binary_hash(left, right: U256) -> U256:
     """
-    Returns the filter mapping hash for transaction delimiter entries.
+    Returns the SHA2 binary tree hash of two given descendants.
     """
-    return Hash32(sha256(tx_hash + b"\x01").digest())
+    node_hash = sha256(left.to_le_bytes32() + right.to_le_bytes32()).digest()
+    return U256.from_le_bytes(node_hash)
 
 
-def entry_hash_block(block_hash: Hash32) -> Hash32:
+def _fnv1a_64(data: Bytes) -> U64:
     """
-    Returns the filter mapping hash for block delimiter entries.
+    Returns the FNV1A64 hash of the input.
     """
-    return Hash32(sha256(block_hash + b"\x02").digest())
+    fnv_prime = U64(0x100000001B3)
+    hash_val = U64(0xCBF29CE484222325)
+    for byte in data:
+        hash_val ^= byte
+        hash_val = (hash_val * fnv_prime) & 0xFFFFFFFFFFFFFFFF
+    return hash_val
+
+
+def index_entry_gti(map_entry_index: Uint) -> U256:
+    """
+    Returns the generalized tree index of the root of the given index entry.
+    """
+    epoch_index = map_entry_index // (MAPS_PER_EPOCH * VALUES_PER_MAP)
+    sub_index = map_entry_index % (MAPS_PER_EPOCH * VALUES_PER_MAP)
+    epoch_root = gti_vector(GTI_EPOCH_HISTORY, epoch_index, LOG2_EPOCH_HISTORY)
+    index_entires_root = gti_merge(epoch_root, GTI_INDEX_ENTRIES)
+    return gti_vector(
+        index_entires_root,
+        sub_index,
+        LOG2_MAPS_PER_EPOCH + LOG2_VALUES_PER_MAP,
+    )
+
+
+def map_row_gti(map_index, row_index: Uint) -> U256:
+    """
+    Returns the generalized tree index of the root of the progressive list
+    representing the given filter map row.
+    """
+    epoch_index = map_index // MAPS_PER_EPOCH
+    map_sub_index = map_index % MAPS_PER_EPOCH
+    epoch_root = gti_vector(GTI_EPOCH_HISTORY, epoch_index, LOG2_EPOCH_HISTORY)
+    filter_maps_root = gti_merge(epoch_root, GTI_FILTER_MAPS)
+    return gti_vector(
+        filter_maps_root,
+        row_index * MAPS_PER_EPOCH + map_sub_index,
+        LOG2_MAP_HEIGHT + LOG2_MAPS_PER_EPOCH,
+    )
 
 
 def prog_list_chunk_gti(list_root: U256, chunk_index: Uint) -> U256:
@@ -454,10 +453,6 @@ def _make_empty_vector_nodes(length: Uint) -> List[U256]:
         roots.append(next_root)
         next_root = _binary_hash(next_root, next_root)
     return roots
-
-
-EMPTY_VECTOR_NODES = _make_empty_vector_nodes(256)
-EMPTY_LOG_INDEX_ROOT = _binary_hash(EMPTY_VECTOR_NODES[LOG2_EPOCH_HISTORY], 0)
 
 
 def log_index_empty_node(index: U256) -> U256:

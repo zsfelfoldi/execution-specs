@@ -45,9 +45,9 @@ from .exceptions import (
 from .fork_types import Account, Address, Authorization, VersionedHash
 from .log_index import (
     LogIndexState,
-    log_index_add_block_delimiter,
-    log_index_add_logs,
-    log_index_add_tx_delimiter,
+    log_index_add_block_entry,
+    log_index_add_log_entries,
+    log_index_add_tx_entry,
     log_index_root,
 )
 from .requests import (
@@ -255,7 +255,7 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     withdrawals_root = root(block_output.withdrawals_trie)
     requests_hash = compute_requests_hash(block_output.requests)
 
-    log_index_add_block_delimiter(block_env.log_index, block.header)
+    log_index_add_block_entry(block_env.log_index, block.header)
 
     if block_output.block_gas_used != block.header.gas_used:
         raise InvalidBlock(
@@ -998,14 +998,14 @@ def process_transaction(
     receipt = make_receipt(
         tx, tx_output.error, block_output.block_gas_used, tx_output.logs
     )
-    log_index_add_tx_delimiter(
+    log_index_add_tx_entry(
         block_env.log_index,
         block_env.number,
         tx_env.tx_hash,
         keccak256(receipt),
         index,
     )
-    log_index_add_logs(
+    log_index_add_log_entries(
         block_env.log_index,
         block_env.number,
         tx_env.tx_hash,
